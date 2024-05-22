@@ -36,7 +36,7 @@ namespace ConfigFileParser
         {
             InitializeComponent();
             //flag = "pipeline";
-            flag = "processor";
+            flag = "all";
         }
 
         private string ExtractString(string originalString, string firstString, string nextString)
@@ -241,7 +241,16 @@ namespace ConfigFileParser
             string[] splitType = processorLineSplit[0].Split('.');
             processorSerialNumber += 1;
             processorInfo.Name = splitType[splitType.Length - 1];
-            processorInfo.Type = type.Replace("/>", string.Empty);//ExtractArraywithSplit(string fileContent, string keyword)
+
+            if (type.Contains(" method=")) type = ExtractArraywithSplit(type, " method=")[0];
+            if (type.Contains(" resolve="))
+                    type = ExtractArraywithSplit(type, " resolve=")[0];
+            if (type.Contains(" patch:")) type = ExtractArraywithSplit(type, " patch:")[0];
+            type = type.Replace(">",string.Empty);
+            type = type.Replace("/", string.Empty);
+            type = type.Replace("]", string.Empty);
+
+            processorInfo.Type = type;
             processorInfo.Method = methodName;
             processorInfo.SerialNumber = processorSerialNumber;
 
@@ -415,23 +424,25 @@ namespace ConfigFileParser
                 pipelineInfoList = new List<PipelineInfo>();
                 lineRange = new LineRange();
 
-                foreach (var filePath in configFiles)
-                {
-                    if (!(filePath.ToLowerInvariant().StartsWith("web.") || filePath.ToLowerInvariant().EndsWith(".disabled")))
-                    {
-                        string configFileData = File.ReadAllText(filePath);
-                        if (string.IsNullOrWhiteSpace(configFileData)) continue;
+                processorSerialNumber = 0;//reset during every click
 
-                        if (configFileData.Contains("<processor"))
+                foreach (var filePath in configFiles)
+                    {
+                        if (!(filePath.ToLowerInvariant().StartsWith("web.") || filePath.ToLowerInvariant().EndsWith(".disabled")))
                         {
-                            GetLineNumberRange(configFileData);
-                            ParseFile(filePath, keywordBeginTag);
+                            string configFileData = File.ReadAllText(filePath);
+                            if (string.IsNullOrWhiteSpace(configFileData)) continue;
+
+                            if (configFileData.Contains("<processor"))
+                            {
+                                GetLineNumberRange(configFileData);
+                                ParseFile(filePath, keywordBeginTag);
+                            }
                         }
                     }
-                }
 
                 if (pipelineInfoList.Count > 0)
-                    if (flag == "pipeline") { SavePipelineHtml(); } else { SaveProcessorHtml(); }
+                    if (flag == "pipeline") { SavePipelineHtml(); } else { SaveAllHtml(); }
 
 
             }
@@ -458,7 +469,30 @@ namespace ConfigFileParser
                 File.WriteAllText("./SitecoreProcessorlist.html", concatenatedLines);
             }
 
-            private void SaveHtml()
+        private void SaveAllHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            //concatenatedLines += "\n<html>\r";
+            concatenatedLines += "\n<p align=center>Sitecore Pipeline Processor List</p>\r";
+            concatenatedLines += "\n<tr><td>S.No.</td><td>Pipeline</td><td>Processor</td><td>Type</td><td>Method</td>\r";
+
+            foreach (var pipelineInfo in pipelineInfoList)
+            {
+
+                //concatenatedLines += $"\n\r\n\t<tr>\n\r\n\t\t<td colspan=4><b>{pipelineInfo.Name}</b></td></tr>";
+                //concatenatedLines += $"\n<tr><td colspan=4>{pipelineInfo.Comment}</td></tr>";
+
+                foreach (var processor in pipelineInfo.ProcessorInfoList)
+                {
+                    concatenatedLines += $"\n<tr><td>{processor.SerialNumber}</td><td>{pipelineInfo.Name}</td><td>{processor.Name}</td><td>{processor.Type}</td><td>{processor.Method}</td></tr>";
+                }
+            }
+
+            File.WriteAllText("./SitecorePipelineProcessorlist.html", concatenatedLines);
+        }
+
+        private void SaveHtml()
             {
                 string concatenatedLines = string.Empty;
 
