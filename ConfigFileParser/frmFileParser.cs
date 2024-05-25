@@ -183,11 +183,11 @@ namespace ConfigFileParser
             //normalize array before any processing
             NormalizeArray();
             MultipleCommentslinesasoneLineArray();
-            //GetStartandEndLineIndex();
+            GetStartandEndLineIndex();
             //if normalized, then get the startlineindex since that will be more accurate
 
             processorInfoList = new List<ProcessorInfo>();
-            for (intLineNumTracker = 1; intLineNumTracker <= lstConfig.Length-1; intLineNumTracker++)
+            for (intLineNumTracker = lineRange.StartLineIndex; intLineNumTracker <= lineRange.EndLineIndex; intLineNumTracker++)
             {
                 var currentLine = lstConfig[intLineNumTracker];
                 var openTagLine = lstConfig[intLineNumTracker-1];
@@ -714,15 +714,19 @@ namespace ConfigFileParser
 
             foreach (var line in lstConfig)
             {
-                if (line.ToLowerInvariant().Contains("pipelines"))
+                if (line.ToLowerInvariant().Contains("<pipelines>"))
                 {
-                    if (intLineNumTrackerIndex>0 && lineRange.StartLineIndex==0) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags
-                    if (lineRange.StartLineIndex > 0 && intLineNumTrackerIndex<lineRange.StartLineIndex) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags
+                    if (intLineNumTrackerIndex>0 && lineRange.StartLineIndex==0) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags get the first one
                 }
 
-                if (line.ToLowerInvariant().Contains("processor"))
+                if (line.ToLowerInvariant().Contains("</pipelines>"))
                 {
                     if (intLineNumTrackerIndex > lineRange.StartLineIndex) lineRange.EndLineIndex = intLineNumTrackerIndex;
+                }
+
+                if (line.ToLowerInvariant().Contains("</processors>"))
+                {
+                    if (intLineNumTrackerIndex > lineRange.StartLineIndex && intLineNumTrackerIndex> lineRange.EndLineIndex) lineRange.EndLineIndex = intLineNumTrackerIndex;
                 }
 
                 intLineNumTrackerIndex += 1;
