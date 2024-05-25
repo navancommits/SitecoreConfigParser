@@ -33,6 +33,7 @@ namespace ConfigFileParser
         private int processorSerialNumber = 0;
         private int pipelineSerialNumber = 0;
         private int tmplinetracker = 0;
+        private bool pipelineCommentAdded = false;
 
         public frmFileParser()
         {
@@ -142,7 +143,7 @@ namespace ConfigFileParser
             {
                 string newline = lineList[intLineNumTracker];
 
-                if (GetRight(newline, 3) == "-->") newline = ConsolidateComments();
+                if (GetRight(newline.Trim(), 3) == "-->") newline = ConsolidateComments();
 
                 newList.Add(newline);
             }
@@ -182,11 +183,11 @@ namespace ConfigFileParser
             //normalize array before any processing
             NormalizeArray();
             MultipleCommentslinesasoneLineArray();
-            GetStartandEndLineIndex();
+            //GetStartandEndLineIndex();
             //if normalized, then get the startlineindex since that will be more accurate
 
             processorInfoList = new List<ProcessorInfo>();
-            for (intLineNumTracker = lineRange.StartLineIndex; intLineNumTracker <= lineRange.EndLineIndex; intLineNumTracker++)
+            for (intLineNumTracker = 1; intLineNumTracker <= lstConfig.Length-1; intLineNumTracker++)
             {
                 var currentLine = lstConfig[intLineNumTracker];
                 var openTagLine = lstConfig[intLineNumTracker-1];
@@ -213,18 +214,23 @@ namespace ConfigFileParser
                     }
 
                     //now extract pipeline comment 
-                    var tmpcommentline = lstConfig[tmpprevlinenum - 1];
-                    string pipelinecommentline = tmpcommentline;
-
-                    if (!tmpcommentline.Trim().StartsWith("<!--"))
+                    string pipelinecommentline = string.Empty;
+                    if (!pipelineCommentAdded)
                     {
-                        pipelinecommentline = lstConfig[tmpprevlinenum - 2];//this is the next possibility 
+                        if (string.IsNullOrWhiteSpace(processorCommentLine))
+                        {
+                            if (lstConfig[tmpprevlinenum - 1].Trim().StartsWith("<!--")) pipelinecommentline = lstConfig[tmpprevlinenum - 1];
+                        }
+                        else
+                        {
+                            if (lstConfig[tmpprevlinenum - 2].Trim().StartsWith("<!--")) pipelinecommentline = lstConfig[tmpprevlinenum - 2];
+                        }
                     }
 
                     //now check if prev line isn't anything else 
                     if (!previousLine.Trim().StartsWith("<pipelines") && !previousLine.Trim().StartsWith("<processor") && !previousLine.Trim().StartsWith("</processor"))
                     {
-                        string comment = GetComment(pipelinecommentline, intOrigIndex - 2);
+                        string comment = pipelinecommentline.Replace("<!--",string.Empty).Replace("-->", string.Empty);
 
                         if (previousLine.Trim().Contains(" help=")) //this line contains pipeline help
                             comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
@@ -232,8 +238,9 @@ namespace ConfigFileParser
                         pipelineInfo = new PipelineInfo
                         {
                             Name = ExtractString(previousLine, "<", ">").Split(' ')[0],//actual extraction
-                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty)
+                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">",string.Empty).Replace("\"",string.Empty).Trim()
                         };
+                        pipelineCommentAdded = true;
 
                         var pathSplit = ExtractArraywithSplit(filePath, "\\");
                         pipelineInfo.FileName = pathSplit[pathSplit.Length - 1];
@@ -268,11 +275,7 @@ namespace ConfigFileParser
             if (tagOpened)
             {
                 var closingTag = $"</{pipelineInfo.Name}>";
-                var openingTag= $"<{pipelineInfo.Name}>";
-
                 var currentLine = lstConfig[lineIndex];
-                var previousLine= lstConfig[lineIndex-1];
-                var pipelinecommentline = lstConfig[lineIndex - 2];
 
                 if (currentLine.Trim().StartsWith(closingTag))
                 {                    
@@ -283,6 +286,7 @@ namespace ConfigFileParser
                     //lineRange.EndLineIndex = 0;
                     previousClosingTag = closingTag;
                     tagOpened = false;
+                    pipelineCommentAdded = false;
                 }
             }
         }
@@ -716,7 +720,7 @@ namespace ConfigFileParser
                     if (lineRange.StartLineIndex > 0 && intLineNumTrackerIndex<lineRange.StartLineIndex) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags
                 }
 
-                if (line.ToLowerInvariant().Contains("pipelines"))
+                if (line.ToLowerInvariant().Contains("processor"))
                 {
                     if (intLineNumTrackerIndex > lineRange.StartLineIndex) lineRange.EndLineIndex = intLineNumTrackerIndex;
                 }
