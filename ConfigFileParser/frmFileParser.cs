@@ -23,7 +23,8 @@ namespace ConfigFileParser
         private List<ProcessorInfo> processorInfoList;
         private string keywordBeginTag;
         private string keywordClosingTag;
-        private int intLineNumTracker;
+        private int intLineNumTracker=0;
+        internal int intLineIndex;
         private string previousClosingTag = "dummy";
         private bool tagOpened;
         private string flag;
@@ -31,12 +32,13 @@ namespace ConfigFileParser
         private int runningPipelineIndex = 0;
         private int processorSerialNumber = 0;
         private int pipelineSerialNumber = 0;
+        private int tmplinetracker = 0;
 
         public frmFileParser()
         {
             InitializeComponent();
             //flag = "pipeline";
-            flag = "all";
+            flag = "pipeline";
         }
 
         private string ExtractString(string originalString, string firstString, string nextString)
@@ -85,18 +87,85 @@ namespace ConfigFileParser
 
             if (line.Trim().EndsWith("-->"))
             {
-                if (line.Trim().StartsWith("<!--"))
+                if (line.Trim().StartsWith("<!--")) 
                 {
                     comment = ExtractString(line.Trim(), "<!--", "-->");
-                }
-                else
-                {
-                    //since cursor ran past, have to go back and concat the comments 
-                    comment = StraightenLinefromRight(linetracker);
-                }
+                }               
             }
 
             return comment;
+        }
+
+        private void NormalizeArray()
+        {
+            //remove blank lines
+            //straighten lines
+            string[] lineList = lstConfig;
+            List<string> newList=new List<string>();
+
+           // tmplinetracker = 0;
+            for(intLineNumTracker = 0; intLineNumTracker < lineList.Length; intLineNumTracker++)
+            {
+                //if (i]< lineList.Count) { 
+                    if (!string.IsNullOrWhiteSpace(lineList[intLineNumTracker].Trim()))
+                    {
+                        string newline = lineList[intLineNumTracker];
+                        
+                        //two types of lines - uncommented and commented line
+
+                        if (newline.Trim().Substring(0,4) == "<!--")
+                        {
+                            if (GetRight(newline, 3) != "-->") newline = StraightenCommentedLine(); //commented line
+                        }
+                        else
+                        {
+                            if (GetRight(newline, 1) != ">") newline = StraightenLine(); //uncommented line
+                        }                        
+
+                        newList.Add(newline);
+                    }
+
+               // }
+            }
+
+            lstConfig = newList.ToArray();
+
+        }
+
+        private void MultipleCommentslinesasoneLineArray()
+        {
+            //consolidate comments in one line
+            string[] lineList = lstConfig;
+            List<string> newList = new List<string>();
+
+            for (intLineNumTracker = 0; intLineNumTracker < lineList.Length; intLineNumTracker++)
+            {
+                string newline = lineList[intLineNumTracker];
+
+                if (GetRight(newline, 3) == "-->") newline = ConsolidateComments();
+
+                newList.Add(newline);
+            }
+
+            lstConfig = newList.ToArray();
+
+        }
+
+        private string ConsolidateComments()
+        {
+            var consolidatedComments=string.Empty;
+
+            do
+            {
+                consolidatedComments += lstConfig[intLineNumTracker];
+
+                intLineNumTracker++;
+
+            } while (lstConfig[intLineNumTracker].Trim().StartsWith("<!--"));
+
+            intLineNumTracker--;
+
+            return consolidatedComments;
         }
 
         private void ParseFile(string filePath, string parentkeyword)
@@ -109,45 +178,56 @@ namespace ConfigFileParser
 
             string strConfigText = configFileData;
             lstConfig = strConfigText.Split(new Char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+            //normalize array before any processing
+            NormalizeArray();
+            MultipleCommentslinesasoneLineArray();
+            GetStartandEndLineIndex();
+            //if normalized, then get the startlineindex since that will be more accurate
+
             processorInfoList = new List<ProcessorInfo>();
             for (intLineNumTracker = lineRange.StartLineIndex; intLineNumTracker <= lineRange.EndLineIndex; intLineNumTracker++)
             {
-                if (IsBlankLine(intLineNumTracker)) continue;
-                //if (IsCommentedLine() && !processorTagCommented) continue;
-
                 var currentLine = lstConfig[intLineNumTracker];
-                int intOrigIndex = intLineNumTracker;
-                if (!currentLine.Trim().EndsWith(">")) currentLine = StraightenLine(intLineNumTracker);
-                //if (currentLine.Trim().StartsWith("<!--") && currentLine.Trim().Contains("<processor ")) processorTagCommented = true;
+                var openTagLine = lstConfig[intLineNumTracker-1];
+
                 processorTagCommented = ProcessorLineCommented(currentLine);
 
-                if (currentLine.Trim().Contains("<processor ") && !IsCommentedLine())
+                if (currentLine.Trim().Contains("<processor ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</","<")))//pipeline could be closed without processor tags within
                 {
+                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) processorTagCommented = true;//since close tag is just after open tag
+
                     //first processor tag enters here and gets the pipeline info too
                     //retrieve prev line
-                    int tmpprevlinenum = lstConfig[intOrigIndex - 1].Contains("-->") ? GetValidLineNumber(intOrigIndex - 1) : intOrigIndex - 1;
+                    int intOrigIndex = intLineNumTracker;
+                    int tmpprevlinenum = intOrigIndex - 1;
                     var tmpprevline = lstConfig[tmpprevlinenum];
-                    string previousLine;
 
-                    if (string.IsNullOrWhiteSpace(tmpprevline.Trim())) tmpprevline = lstConfig[tmpprevlinenum - 1];
-                    if (!(tmpprevline.Contains("<") && (tmpprevline.Contains(">")))) { previousLine = StraightenProcessorLinefromRight(intOrigIndex - 1); } 
-                    else { previousLine = tmpprevline; }
+                    string processorCommentLine=string.Empty;
+                    string previousLine = lstConfig[tmpprevlinenum];//if no processor comments exist
 
+                    if (tmpprevline.Trim().StartsWith("<!--"))
+                    {
+                        processorCommentLine = lstConfig[tmpprevlinenum];
+                        previousLine = lstConfig[tmpprevlinenum - 1];
+                    }
+
+                    //now extract pipeline comment 
                     var tmpcommentline = lstConfig[tmpprevlinenum - 1];
-                    string pipelinecommentline;
+                    string pipelinecommentline = tmpcommentline;
 
-                    //if (string.IsNullOrWhiteSpace(tmpcommentline.Trim())) tmpcommentline = lstConfig[tmpprevlinenum - 2];
-                    if (tmpcommentline.Contains("-->") && (!tmpcommentline.Contains("<!--"))) 
-                        { pipelinecommentline = StraightenLinefromRight(intOrigIndex - 2); }
-                    else { pipelinecommentline = tmpcommentline; }
+                    if (!tmpcommentline.Trim().StartsWith("<!--"))
+                    {
+                        pipelinecommentline = lstConfig[tmpprevlinenum - 2];//this is the next possibility 
+                    }
 
                     //now check if prev line isn't anything else 
-                    if (!previousLine.Trim().StartsWith("<pipelines") && !previousLine.Trim().StartsWith("<processor") && !previousLine.Trim().StartsWith("</processor") && !string.IsNullOrWhiteSpace(previousClosingTag))
+                    if (!previousLine.Trim().StartsWith("<pipelines") && !previousLine.Trim().StartsWith("<processor") && !previousLine.Trim().StartsWith("</processor"))
                     {
                         string comment = GetComment(pipelinecommentline, intOrigIndex - 2);
 
-                        if (currentLine.Trim().Contains(" help="))
-                            comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
+                        if (previousLine.Trim().Contains(" help=")) //this line contains pipeline help
+                            comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
 
                         pipelineInfo = new PipelineInfo
                         {
@@ -167,27 +247,35 @@ namespace ConfigFileParser
                     }
 
                     tagOpened = true;
-                    
+
+                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) AddtoListandReset(intLineNumTracker, pipelineInfo, filePath);//since close tag is just after open tag
+
                 }
                 else
                 {
                     //rest of lines enter this flow
-                    AddtoListandReset(currentLine, pipelineInfo);
+                    AddtoListandReset(intLineNumTracker, pipelineInfo,filePath);
                 }
 
                     processorTagCommented = false;
              }
                 lineRange = new LineRange();//re-initialize
-                AddtoListandReset(lstConfig[intLineNumTracker - 1], pipelineInfo);
+                AddtoListandReset(intLineNumTracker-1, pipelineInfo, filePath);
         }
 
-        private void AddtoListandReset(string currentLine, PipelineInfo pipelineInfo)
+        private void AddtoListandReset(int lineIndex, PipelineInfo pipelineInfo,string filePath)
         {
             if (tagOpened)
             {
                 var closingTag = $"</{pipelineInfo.Name}>";
+                var openingTag= $"<{pipelineInfo.Name}>";
+
+                var currentLine = lstConfig[lineIndex];
+                var previousLine= lstConfig[lineIndex-1];
+                var pipelinecommentline = lstConfig[lineIndex - 2];
+
                 if (currentLine.Trim().StartsWith(closingTag))
-                {
+                {                    
                     pipelineInfo.ProcessorInfoList = processorInfoList;
                     pipelineInfoList.Add(pipelineInfo);
                     processorInfoList = new List<ProcessorInfo>();
@@ -213,8 +301,7 @@ namespace ConfigFileParser
 
             if (!((tmpcommentline.Contains("<!--") || tmpcommentline.Contains("-->")))) return false;
 
-            if (tmpcommentline.Contains("<!--") && (!tmpcommentline.Contains("-->"))) { singleCommentedline = StraightenLinefromLeft(); }
-            else { singleCommentedline = tmpcommentline; }
+            singleCommentedline = tmpcommentline; 
 
             if (singleCommentedline.Trim().StartsWith("<!--") && singleCommentedline.Trim().EndsWith("-->"))
             {
@@ -254,7 +341,7 @@ namespace ConfigFileParser
             processorInfo.Method = methodName;
             processorInfo.SerialNumber = processorSerialNumber;
 
-            if (!string.IsNullOrWhiteSpace(previousline)) processorInfo.Comment = GetComment(previousline, intLineNumTracker - 1);
+            if (!string.IsNullOrWhiteSpace(lstConfig[intLineNumTracker-1])) processorInfo.Comment = GetComment(lstConfig[intLineNumTracker - 1], intLineNumTracker - 1);
 
             processorInfoList.Add(processorInfo);
 
@@ -287,10 +374,7 @@ namespace ConfigFileParser
                 }
                 else
                 {
-                    //if line continues to next
-                    var straightenedline = StraightenLine(intLineNumTracker);
-
-                    processorInfoList = AddProcessorInfofromLine(processorInfo, straightenedline);
+                    processorInfoList = AddProcessorInfofromLine(processorInfo, lstConfig[intLineNumTracker]);
                 }
             }
 
@@ -327,149 +411,199 @@ namespace ConfigFileParser
             return inttmplinetracker;
         }
 
-        private string StraightenLine(int templinetracker)
+        private string StraightenLine()
+        {
+            string processorLine = string.Empty;
+            string currline;
+
+            do
             {
-                string processorLine = string.Empty;
-                string currline;
-                do
+                currline = lstConfig[intLineNumTracker].Trim();
+
+                processorLine += currline + " ";
+
+                intLineNumTracker++;
+
+            } while (GetRight(currline, 1) != ">");
+
+            intLineNumTracker--;
+
+            return processorLine;
+        }
+
+        private string StraightenCommentedLine()
+        {
+            string processorLine = string.Empty;
+            string currline;
+
+            do
+            {
+                currline = lstConfig[intLineNumTracker].Trim();
+
+                processorLine += currline + " ";
+
+                intLineNumTracker++;
+
+            } while (GetRight(currline, 3) != "-->");
+
+            intLineNumTracker--;
+
+            return processorLine;
+        }
+
+        private string GetStraightLine()
+        {
+            string processorLine = string.Empty;
+            string currline;
+            do
+            {
+                currline = lstConfig[tmplinetracker].Trim();
+
+                processorLine += currline + " ";
+
+                tmplinetracker++;
+
+            } while (GetRight(currline, 1) != ">");
+
+            //tmplinetracker = tmplinetracker - 2;
+
+            return processorLine;
+        }
+
+        private string StraightenLinefromRight(int templinetracker)
+        {
+            string commentedLine = string.Empty;
+            string currline;
+            do
+            {
+                currline = lstConfig[templinetracker].Trim();
+                commentedLine = currline + " " + commentedLine;
+
+                templinetracker--;
+
+            } while (GetLeft(currline, 4) != "<!--");
+
+            return commentedLine;
+        }
+
+        private string StraightenLinefromLeft()
+        {
+            string commentedLine = string.Empty;
+            string currline;
+            do
+            {
+                currline = lstConfig[intLineNumTracker].Trim();
+                commentedLine += " " + currline;
+
+                intLineNumTracker++;
+
+            } while (GetRight(currline, 3) != "-->");
+
+            return commentedLine;
+        }
+
+        private string StraightenProcessorLinefromRight(int templinetracker)
+        {
+            if (string.IsNullOrWhiteSpace(lstConfig[templinetracker].Trim())) return string.Empty;
+
+            string processorLine = string.Empty;
+            string currline;
+            do
+            {
+                currline = lstConfig[templinetracker].Trim();
+                processorLine = currline + " " + processorLine;
+
+                templinetracker--;
+
+            } while (GetLeft(currline, 10) != "<processor");
+
+            return processorLine;
+        }
+
+        private string GetRight(string original, int numberCharacters)
+        {
+            if (string.IsNullOrWhiteSpace(original) || original.Length < numberCharacters) return string.Empty;
+
+            return original.Substring(original.Length - numberCharacters);
+        }
+
+        private string GetLeft(string original, int numberCharacters)
+        {
+            if (string.IsNullOrWhiteSpace(original) || original.Length < numberCharacters) return string.Empty;
+
+            return original.Trim().Substring(0, numberCharacters);
+        }
+
+        private void button2_Click(object sender, EventArgs e)
+        {
+            var ext = new List<string> { "config" };
+            var configFiles = Directory
+                .EnumerateFiles(txtSelectedPath.Text, "*.config", SearchOption.AllDirectories)
+                .Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant()));
+
+            keywordBeginTag = "<pipelines>";
+            keywordClosingTag = keywordBeginTag.Replace("<", "</");
+
+            pipelineInfoList = new List<PipelineInfo>();
+            lineRange = new LineRange();
+
+            processorSerialNumber = 0;//reset during every click
+
+            foreach (var filePath in configFiles)
                 {
-                    currline = lstConfig[intLineNumTracker].Trim();
-
-                    processorLine += currline + " ";
-
-                    intLineNumTracker++;
-
-                } while (GetRight(currline, 1) != ">");
-
-                intLineNumTracker = intLineNumTracker - 1;
-
-                return processorLine;
-            }
-
-            private string StraightenLinefromRight(int templinetracker)
-            {
-                string commentedLine = string.Empty;
-                string currline;
-                do
-                {
-                    currline = lstConfig[templinetracker].Trim();
-                    commentedLine = currline + " " + commentedLine;
-
-                    templinetracker--;
-
-                } while (GetLeft(currline, 4) != "<!--");
-
-                return commentedLine;
-            }
-
-            private string StraightenLinefromLeft()
-            {
-                string commentedLine = string.Empty;
-                string currline;
-                do
-                {
-                    currline = lstConfig[intLineNumTracker].Trim();
-                    commentedLine += " " + currline;
-
-                    intLineNumTracker++;
-
-                } while (GetRight(currline, 3) != "-->");
-
-                return commentedLine;
-            }
-
-
-            private string StraightenProcessorLinefromRight(int templinetracker)
-            {
-                if (string.IsNullOrWhiteSpace(lstConfig[templinetracker].Trim())) return string.Empty;
-
-                string processorLine = string.Empty;
-                string currline;
-                do
-                {
-                    currline = lstConfig[templinetracker].Trim();
-                    processorLine = currline + " " + processorLine;
-
-                    templinetracker--;
-
-                } while (GetLeft(currline, 10) != "<processor");
-
-                return processorLine;
-            }
-
-            private string GetRight(string original, int numberCharacters)
-            {
-                if (string.IsNullOrWhiteSpace(original) || original.Length < numberCharacters) return string.Empty;
-
-                return original.Trim().Substring(original.Length - numberCharacters);
-            }
-
-            private string GetLeft(string original, int numberCharacters)
-            {
-                if (string.IsNullOrWhiteSpace(original) || original.Length < numberCharacters) return string.Empty;
-
-                return original.Trim().Substring(0, numberCharacters);
-            }
-
-            private void button2_Click(object sender, EventArgs e)
-            {
-                var ext = new List<string> { "config" };
-                var configFiles = Directory
-                   .EnumerateFiles(txtSelectedPath.Text, "*.config", SearchOption.AllDirectories)
-                   .Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant()));
-
-                keywordBeginTag = "<pipelines>";
-                keywordClosingTag = keywordBeginTag.Replace("<", "</");
-
-                pipelineInfoList = new List<PipelineInfo>();
-                lineRange = new LineRange();
-
-                processorSerialNumber = 0;//reset during every click
-
-                foreach (var filePath in configFiles)
+                    if (!(filePath.ToLowerInvariant().StartsWith("web.") || filePath.ToLowerInvariant().EndsWith(".disabled")))
                     {
-                        if (!(filePath.ToLowerInvariant().StartsWith("web.") || filePath.ToLowerInvariant().EndsWith(".disabled")))
+                        string configFileData = File.ReadAllText(filePath);
+                        if (string.IsNullOrWhiteSpace(configFileData)) continue;
+
+                        if (configFileData.Contains("pipelines"))
                         {
-                            string configFileData = File.ReadAllText(filePath);
-                            if (string.IsNullOrWhiteSpace(configFileData)) continue;
-
-                            if (configFileData.Contains("<processor"))
-                            {
-                                GetLineNumberRange(configFileData);
-                                ParseFile(filePath, keywordBeginTag);
-                            }
+                            //GetLineNumberRange(configFileData);
+                            ParseFile(filePath, keywordBeginTag);
                         }
-                    }
-
-                if (pipelineInfoList.Count > 0)
-                    if (flag == "pipeline") { SavePipelineHtml(); } else { SaveAllHtml(); }
-
-
-            }
-
-            private void SaveProcessorHtml()
-            {
-                string concatenatedLines = string.Empty;
-
-                //concatenatedLines += "\n<html>\r";
-                concatenatedLines += "\n<p align=center>Sitecore Processor List</p>\r";
-                concatenatedLines += "\n<tr><td>S.No.</td><td>Name</td><td>Type</td><td>Method</td><td>Comment</td>\r";
-
-                foreach (var pipelineInfo in pipelineInfoList) {
-
-                    //concatenatedLines += $"\n\r\n\t<tr>\n\r\n\t\t<td colspan=4><b>{pipelineInfo.Name}</b></td></tr>";
-                    //concatenatedLines += $"\n<tr><td colspan=4>{pipelineInfo.Comment}</td></tr>";
-
-                    foreach (var processor in pipelineInfo.ProcessorInfoList)
-                    {
-                        concatenatedLines += $"\n<tr><td>{processor.SerialNumber}</td><td>{processor.Name}</td><td>{processor.Type}</td><td>{processor.Method}</td><td>{processor.Comment}</td></tr>";
                     }
                 }
 
-                File.WriteAllText("./SitecoreProcessorlist.html", concatenatedLines);
+            if (pipelineInfoList.Count <= 0) return;
+            switch (flag)
+            {
+                case "pipeline":
+                    SavePipelineHtml();
+                    break;
+                case "pipelineandprocessor":
+                    SavePipelineProcessorHtml();
+                    break;               
+                default:
+                    break;
+            }
+        //if (flag == "pipeline") { SavePipelineHtml(); } else { SaveAllHtml(); }
+
+
+        }
+
+        private void SaveProcessorHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            //concatenatedLines += "\n<html>\r";
+            concatenatedLines += "\n<p align=center>Sitecore Processor List</p>\r";
+            concatenatedLines += "\n<tr><td>S.No.</td><td>Name</td><td>Type</td><td>Method</td><td>Comment</td>\r";
+
+            foreach (var pipelineInfo in pipelineInfoList) {
+
+                //concatenatedLines += $"\n\r\n\t<tr>\n\r\n\t\t<td colspan=4><b>{pipelineInfo.Name}</b></td></tr>";
+                //concatenatedLines += $"\n<tr><td colspan=4>{pipelineInfo.Comment}</td></tr>";
+
+                foreach (var processor in pipelineInfo.ProcessorInfoList)
+                {
+                    concatenatedLines += $"\n<tr><td>{processor.SerialNumber}</td><td>{processor.Name}</td><td>{processor.Type}</td><td>{processor.Method}</td><td>{processor.Comment}</td></tr>";
+                }
             }
 
-        private void SaveAllHtml()
+            File.WriteAllText("./SitecoreProcessorlist.html", concatenatedLines);
+        }
+
+        private void SavePipelineProcessorHtml()
         {
             string concatenatedLines = string.Empty;
 
@@ -523,21 +657,22 @@ namespace ConfigFileParser
                 concatenatedLines += "\n<p align=center>Sitecore Pipeline List</p>\r";
                 concatenatedLines += "\n<tr><td>Name</td><td>File Name</td><td>Comment</td></tr>\r";
 
+                int pipelineSno = 0;
+
                 foreach (var pipelineInfo in pipelineInfoList)
                 {
 
-                    concatenatedLines += $"\n\r\t<tr>\n\r\t\t<td><b>{pipelineInfo.Name}</b></td>\n\r\t\t<td>{pipelineInfo.FileName}</td>\n\r\t\t<td>{pipelineInfo.Comment}</td>\n\r\t</tr>";
-                    //concatenatedLines += $"\n<tr><td colspan=4>{pipelineInfo.Comment}</td></tr>";
+                    pipelineSno += 1;
+
+                    concatenatedLines += $"\n<tr><td>{pipelineSno}</td><td>{pipelineInfo.Name}</td><td>{pipelineInfo.FileName}</td><td>{pipelineInfo.Comment}</td></tr>";
 
                 }
 
                 File.WriteAllText("./SitecorePipelinelist.html", concatenatedLines);
             }
 
-
-            private void GetLineNumberRange(string configData)
+            private void GetLineNumberRange()
             {
-                string[] lstConfig = configData.Split(new Char[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
                 int intLineNumTrackerIndex = 0;
 
                 foreach (var line in lstConfig)
@@ -568,6 +703,27 @@ namespace ConfigFileParser
                     intLineNumTrackerIndex += 1;
                 }
             }
-     }
+
+        private void GetStartandEndLineIndex()
+        {
+            int intLineNumTrackerIndex = 0;
+
+            foreach (var line in lstConfig)
+            {
+                if (line.ToLowerInvariant().Contains("pipelines"))
+                {
+                    if (intLineNumTrackerIndex>0 && lineRange.StartLineIndex==0) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags
+                    if (lineRange.StartLineIndex > 0 && intLineNumTrackerIndex<lineRange.StartLineIndex) lineRange.StartLineIndex = intLineNumTrackerIndex; //since there could be multiple pipelines tags
+                }
+
+                if (line.ToLowerInvariant().Contains("pipelines"))
+                {
+                    if (intLineNumTrackerIndex > lineRange.StartLineIndex) lineRange.EndLineIndex = intLineNumTrackerIndex;
+                }
+
+                intLineNumTrackerIndex += 1;
+            }
+        }
+    }
  }
 
