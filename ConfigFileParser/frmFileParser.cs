@@ -576,7 +576,10 @@ namespace ConfigFileParser
                     break;
                 case "pipelineandprocessor":
                     SavePipelineProcessorHtml();
-                    break;               
+                    break;
+                case "processor":
+                    SaveProcessorHtml();
+                    break;
                 default:
                     break;
             }
@@ -591,7 +594,7 @@ namespace ConfigFileParser
 
             //concatenatedLines += "\n<html>\r";
             concatenatedLines += "\n<p align=center>Sitecore Processor List</p>\r";
-            concatenatedLines += "\n<tr><td>S.No.</td><td>Name</td><td>Type</td><td>Method</td><td>Comment</td>\r";
+            concatenatedLines += "\n<tr><td>S.No.</td><td>File Name</td><td>Processor</td><td>Comment</td>\r";
 
             foreach (var pipelineInfo in pipelineInfoList) {
 
@@ -600,7 +603,7 @@ namespace ConfigFileParser
 
                 foreach (var processor in pipelineInfo.ProcessorInfoList)
                 {
-                    concatenatedLines += $"\n<tr><td>{processor.SerialNumber}</td><td>{processor.Name}</td><td>{processor.Type}</td><td>{processor.Method}</td><td>{processor.Comment}</td></tr>";
+                    concatenatedLines += $"\n<tr><td>{processor.SerialNumber}</td><td>{pipelineInfo.FileName}</td><td>{processor.Name}</td><td>{processor.Comment}</td></tr>";
                 }
             }
 
