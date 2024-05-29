@@ -1,4 +1,5 @@
-﻿using System;
+﻿using ServiceStack.Text;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -25,6 +26,10 @@ namespace ConfigFileExtractor
         private static string searchTagStringList;
         private static string[] searchStringArray;
         private static int lastTagOccurence;
+        private static int outputType;
+        private static int inputOption = 0;
+        private static string htmlOpenTag = "<html><table>";
+        private static string htmlCloseTag = "</table></html>";
 
         static void Main(string[] args)
         {
@@ -46,15 +51,62 @@ namespace ConfigFileExtractor
             //child tag attributes to retrieve - type, method, resolve
 
             //
-
+            Console.ForegroundColor = ConsoleColor.Yellow;
             Console.WriteLine("Enter the file path to search: ");
+            Console.ForegroundColor = ConsoleColor.White;
             parsePath = Console.ReadLine();
 
-            Console.WriteLine("Enter parse type (1 for only one level parsing and 2 for leaf at one-level depth): ");
-            parseType = Convert.ToInt16(Console.ReadLine());
+            Console.ForegroundColor = ConsoleColor.Blue;
+            Console.WriteLine("\rEnter number for the option:\r");
+            Console.WriteLine("1. Pipeline List\r");
+            Console.WriteLine("2. Pipeline Processor List\r");
+            Console.WriteLine("3. Event List\r");
+            Console.WriteLine("4. Settings List\r");
+            Console.WriteLine("5. Command List\r");
+            Console.ForegroundColor = ConsoleColor.White;
+            inputOption = Convert.ToInt16(Console.ReadLine());
 
-            Console.WriteLine("Enter search tag string list (without < or >, just the keywords separated by comma): ");
-            searchTagStringList = Console.ReadLine();
+            Console.ForegroundColor = ConsoleColor.Green;
+            Console.WriteLine("\rEnter number for the output type:\r");
+            Console.WriteLine("1. HTML\r");
+            Console.WriteLine("2. CSV\r");
+            Console.ForegroundColor = ConsoleColor.White;
+            outputType = Convert.ToInt16(Console.ReadLine());
+
+            switch (inputOption)
+            {
+                case 1:
+                    parseType = 2;
+                    searchTagStringList = "pipelines,processors";
+                    lastTagOccurence = 1;
+                    leafTagString = "processor";
+                    break;
+                case 2:
+                    parseType = 2;
+                    searchTagStringList = "pipelines,processors";
+                    lastTagOccurence = 1;
+                    leafTagString = "processor";
+                    break;
+                case 3:
+                    parseType = 2;
+                    searchTagStringList = "events";
+                    lastTagOccurence = 1;
+                    nodeTagString = "event";
+                    leafTagString = "handler";
+                    break;
+                case 4:
+                    parseType = 1;
+                    searchTagStringList = "settings";
+                    lastTagOccurence = 0;
+                    leafTagString = "setting";
+                    break;
+                case 5:
+                    parseType = 1;
+                    searchTagStringList = "commands";
+                    lastTagOccurence = 0;
+                    leafTagString = "command";
+                    break;
+            }
 
             if (string.IsNullOrWhiteSpace(searchTagStringList)) return;
 
@@ -67,18 +119,6 @@ namespace ConfigFileExtractor
                 searchTagStringList += ",";
                 searchStringArray = searchTagStringList.Split(',');
             }
-
-            Console.WriteLine("Pick first (0) or last (1) occurence of end tag?: ");
-            lastTagOccurence = Convert.ToInt16(Console.ReadLine());
-
-            if (parseType == 2)//since leaf falls in one-level depth and node could be fixed and easier to track such fixed nodes if user-entered
-            {
-                Console.WriteLine("Enter fixed node tag string (like event under events, leave it blank if variable): (without < / or >, just the keyword)");
-                nodeTagString = Console.ReadLine();
-            }
-
-            Console.WriteLine("Enter leaf tag search string (without < or >, just the keyword): ");
-            leafTagString = Console.ReadLine();
 
             ProcessConfigFile();
             Console.WriteLine("Done");
@@ -251,44 +291,115 @@ namespace ConfigFileExtractor
                     previousLine = lstConfig[tmpprevlinenum - 1];
                 }
 
-                string nextLine = lstConfig[intLineNumTracker + 1];
+                string nextLine=string.Empty;
+                if (intLineNumTracker< lstConfig.Length-1) nextLine = lstConfig[intLineNumTracker + 1];
 
-                //there could be scenarios when node is opened and closed without any leaves within like, <nodetag /> and this must be handled too
-                if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}"))//node lines enter this block
-                {
-                    string tmpCurrentLine;
-                    if (currentLine.Trim().Contains(' ')) tmpCurrentLine = currentLine.Trim().Split(' ')[0]; else tmpCurrentLine = currentLine.Trim();
-
-                    if (!string.IsNullOrWhiteSpace(nodeTagString) && currentLine.Trim().StartsWith($"<{nodeTagString} ") || RemoveSpecialCharacters(tmpCurrentLine) == RemoveSpecialCharacters(nextLine.Trim()) || currentLine.Trim().EndsWith("/>"))
+                
+                    //nodes falling in level 1 or 2
+                    //there could be scenarios when node is opened and closed without any leaves within like, <nodetag /> and this must be handled too
+                    if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}"))//node lines enter this block
                     {
-                        //1. because fixed tag nodes without children must be accounted
-                        //2. tag starts and ends in one line
-                        //3. next line is close node tag
-                        leafTagCommented = true;
+                        string tmpCurrentLine;
+                        if (currentLine.Trim().Contains(' ')) tmpCurrentLine = currentLine.Trim().Split(' ')[0]; else tmpCurrentLine = currentLine.Trim();
 
-                        //now extract node comment just above node open tag
-                        if (!nodeCommentAdded)
-                            if (lstConfig[tmpprevlinenum].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum];
-
-                        //node info extraction
-                        string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
-
-                        if (currentLine.Trim().Contains(" help=")) //this line contains node help
-                            comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
-
-                        string name = string.Empty;
-                        if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
-
-                        nodeInfo = new NodeInfo
+                        if (!string.IsNullOrWhiteSpace(nodeTagString) && currentLine.Trim().StartsWith($"<{nodeTagString} ") || RemoveSpecialCharacters(tmpCurrentLine) == RemoveSpecialCharacters(nextLine.Trim()) || currentLine.Trim().EndsWith("/>"))
                         {
-                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
-                        };
+                            //1. because fixed tag nodes without children must be accounted
+                            //2. tag starts and ends in one line
+                            //3. next line is close node tag
+                            leafTagCommented = true;
 
-                        if (string.IsNullOrWhiteSpace(name)) name = ExtractString(currentLine, "<", ">").Split(' ')[0];
-                        nodeInfo.Name = RemoveSpecialCharacters(name);
+                            //now extract node comment just above node open tag
+                            if (!nodeCommentAdded)
+                                if (lstConfig[tmpprevlinenum].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum];
 
-                        nodeCommentAdded = true;
-                        //node info extraction
+                            //node info extraction
+                            string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
+
+                            if (currentLine.Trim().Contains(" help=")) //this line contains node help
+                                comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
+
+                            string name = string.Empty;
+                            if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
+
+                            nodeInfo = new NodeInfo
+                            {
+                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                            };
+
+                            if (string.IsNullOrWhiteSpace(name)) name = ExtractString(currentLine, "<", ">").Split(' ')[0];
+                            nodeInfo.Name = RemoveSpecialCharacters(name);
+
+                            nodeCommentAdded = true;
+                            //node info extraction
+
+                            var pathSplit = ExtractArraywithSplit(filePath, "\\");
+                            nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
+
+                            //leaf tags within an existing node
+                            if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
+
+                            if (currentLine.Trim().Replace("<", "</") == nextLine.Trim()) intLineNumTracker++; //this is already accounted since node close tag is just after open tag
+
+                            tagOpened = true;
+                        }
+                    }
+
+                    if (currentLine.Trim().Contains($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
+                    {
+                        if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) leafTagCommented = true;//since close tag is just after open tag 
+                                                                                                                          //first leaf tag enters here and gets the node info too
+                                                                                                                          //retrieve prev line                    
+                        if (tmpprevline.Trim().StartsWith("<!--"))
+                        {
+                            leafCommentLine = lstConfig[tmpprevlinenum];
+                            previousLine = lstConfig[tmpprevlinenum - 1];
+                        }
+
+                        //now extract node comment 
+                        if (parseType == 2) //applicable only for more than one level nesting
+                        {
+                            if (!nodeCommentAdded)
+                            {
+                                if (string.IsNullOrWhiteSpace(leafCommentLine))
+                                {
+                                    if (lstConfig[tmpprevlinenum - 1].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 1];
+                                }
+                                else
+                                {
+                                    if (lstConfig[tmpprevlinenum - 2].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 2];
+                                }
+                            }
+
+                            //now check if prev line isn't anything else 
+                            if (!previousLine.Trim().StartsWith($"<{leafTagString}") && !previousLine.Trim().StartsWith($"</{leafTagString}"))
+                            {
+                                //node info extraction
+                                string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
+
+                                if (previousLine.Trim().Contains(" help=")) //this line contains node help
+                                    comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
+
+                                string name = string.Empty;
+                                if (previousLine.Contains(" name=")) name = ExtractArraywithSplit(previousLine, " name=")[1];
+
+                                nodeInfo = new NodeInfo
+                                {
+                                    Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                                };
+
+                                if (string.IsNullOrWhiteSpace(name)) name = ExtractString(previousLine, "<", ">").Split(' ')[0];
+                                nodeInfo.Name = name;
+
+                                nodeCommentAdded = true;
+                                //node info extraction
+
+                            }
+                        }
+                        else
+                        {
+                            nodeInfo = new NodeInfo();
+                        }
 
                         var pathSplit = ExtractArraywithSplit(filePath, "\\");
                         nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
@@ -296,87 +407,18 @@ namespace ConfigFileExtractor
                         //leaf tags within an existing node
                         if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
 
-                        if (currentLine.Trim().Replace("<", "</") == nextLine.Trim()) intLineNumTracker++; //this is already accounted since node close tag is just after open tag
-
                         tagOpened = true;
-                    }
-                }
 
-                if (currentLine.Trim().Contains($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
-                {
-                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) leafTagCommented = true;//since close tag is just after open tag 
-                                                                                                                        //first leaf tag enters here and gets the node info too
-                                                                                                                        //retrieve prev line                    
-                    if (tmpprevline.Trim().StartsWith("<!--"))
-                    {
-                        leafCommentLine = lstConfig[tmpprevlinenum];
-                        previousLine = lstConfig[tmpprevlinenum - 1];
-                    }
+                        if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) AddtoListandReset(intLineNumTracker, nodeInfo, filePath);//since leaf close tag is just after open tag
 
-                    //now extract node comment 
-                    if (parseType == 2) //applicable only for more than one level nesting
-                    {
-                        if (!nodeCommentAdded)
-                        {
-                            if (string.IsNullOrWhiteSpace(leafCommentLine))
-                            {
-                                if (lstConfig[tmpprevlinenum - 1].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 1];
-                            }
-                            else
-                            {
-                                if (lstConfig[tmpprevlinenum - 2].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 2];
-                            }
-                        }
-
-                        //now check if prev line isn't anything else 
-                        if (!previousLine.Trim().StartsWith($"<{leafTagString}") && !previousLine.Trim().StartsWith($"</{leafTagString}"))
-                        {
-                            //node info extraction
-                            string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
-
-                            if (previousLine.Trim().Contains(" help=")) //this line contains node help
-                                comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
-
-                            string name = string.Empty;
-                            if (previousLine.Contains(" name=")) name = ExtractArraywithSplit(previousLine, " name=")[1];
-
-                            nodeInfo = new NodeInfo
-                            {
-                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
-                            };
-
-                            if (string.IsNullOrWhiteSpace(name)) name = ExtractString(previousLine, "<", ">").Split(' ')[0];
-                            nodeInfo.Name = name;
-
-                            nodeCommentAdded = true;
-                            //node info extraction
-
-                        }
                     }
                     else
                     {
-                        nodeInfo = new NodeInfo();
+                        //all other lines enter this flow
+                        AddtoListandReset(intLineNumTracker, nodeInfo, filePath);
                     }
 
-                    var pathSplit = ExtractArraywithSplit(filePath, "\\");
-                    nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
-
-                    //leaf tags within an existing node
-                    if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
-
-                    tagOpened = true;
-
-                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) AddtoListandReset(intLineNumTracker, nodeInfo, filePath);//since leaf close tag is just after open tag
-
-                }
-                else
-                {
-                    //all other lines enter this flow
-                    AddtoListandReset(intLineNumTracker, nodeInfo, filePath);
-                }
-
-                leafTagCommented = false;
-                //lineRange = new LineRange();//re-initialize
+                    leafTagCommented = false;
             }
             AddtoListandReset(intLineNumTracker - 1, nodeInfo, filePath);
         }
@@ -394,6 +436,7 @@ namespace ConfigFileExtractor
                     }
                     break;
                 case 2:
+                case 0:
                     if (tagOpened)
                     {
                         string closingTag;
@@ -424,6 +467,8 @@ namespace ConfigFileExtractor
 
         private static string RemoveSpecialCharacters(string name)
         {
+            if (string.IsNullOrWhiteSpace(name)) return name;
+
             name = name.Replace("\"", string.Empty);
             name = name.Replace(">", string.Empty);
             name = name.Replace("/", string.Empty);
@@ -613,25 +658,71 @@ namespace ConfigFileExtractor
             }
            
             if (nodeInfoList.Count <= 0) return;
-            switch (parseType)
+            switch (inputOption)
             {
                 case 1:
-                    SaveLeafHtml();
+                    switch (outputType)
+                    {
+                        case 1:
+                            SavePipelineHtml();                            
+                            break;
+                        case 2:
+                            SavePipelinecsv();
+                            break;
+                    }
                     break;
                 case 2:
-                    SaveNodeandLeafHtml();
-                    //SaveNodeHtml();
-                    break;                
-                default:
+                    switch (outputType)
+                    {
+                        case 1:
+                            SavePipelineProcessorHtml();
+                            break;
+                        case 2:
+                            SavePipelineProcessorcsv();
+                            break;
+                    }
+                    break;
+                case 3:
+                    switch (outputType)
+                    {
+                        case 1:
+                            SaveEventHandlerListHtml();
+                            break;
+                        case 2:
+                            //SaveEventHandlerListcsv();
+                            break;
+                    }
+                    break;
+                case 4:
+                    switch (outputType)
+                    {
+                        case 1:
+                            SaveSettingsListHtml();
+                            break;
+                        case 2:
+                            //SaveSettingsListcsv();
+                            break;
+                    }
+                    break;
+                case 5:
+                    switch (outputType)
+                    {
+                        case 1:
+                            SaveCommandListHtml();
+                            break;
+                        case 2:
+                            //SaveCommandListcsv();
+                            break;
+                    }
                     break;
             }
+           
         }
 
         private static void SaveLeafHtml()
         {
             string concatenatedLines = string.Empty;
 
-            //concatenatedLines += "\n<html>\r";
             concatenatedLines += $"\n<p align=center>Sitecore {leafTagString} list</p>\r";
             concatenatedLines += $"\n<tr><td>S.No.</td><td>File Name</td><td>{leafTagString}</td><td>Comment</td></tr>\r";
 
@@ -674,20 +765,174 @@ namespace ConfigFileExtractor
             File.WriteAllText($"./Sitecore{leafTagString}list.html", concatenatedLines);
         }
 
-        private static void SaveNodeHtml()
+        private static void SavePipelineProcessorHtml()
         {
             string concatenatedLines = string.Empty;
 
-            concatenatedLines += $"\n<p align=center>Sitecore {nodeTagString} list</p>\r";
-            concatenatedLines += $"\n<tr><td>S.No.</td><td>{nodeTagString}</td><td>Comment</td></tr>\r";
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Pipeline Processor list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Pipeline</th><th>Processor</th><th>Type</th><th>Method</th><th>Comment</th></tr>\r";
+            int intsno = 0;
 
             foreach (var nodeInfo in nodeInfoList)
             {
-                
-                  concatenatedLines += $"\n<tr><td>{nodeInfo.SerialNumber}</td><td>{nodeInfo.Name}</td><td>{nodeInfo.Comment}</td></tr>";
+                if (nodeInfo.LeafInfoList.Any())
+                {
+                    foreach (var leaf in nodeInfo.LeafInfoList)
+                    {
+                        intsno++;
+                        concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td>{leaf.Name}</td><td>{leaf.Type}</td><td>{leaf.Method}</td><td>{leaf.Comment}</td></tr>";
+                    }
+                }
+                else
+                {
+                    intsno++;
+                    concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td></td><td></td><td></td><td></td></tr>";
+                }
             }
 
+            concatenatedLines += htmlCloseTag;
             File.WriteAllText($"./Sitecore{leafTagString}list.html", concatenatedLines);
+        }
+
+        private static void SavePipelineProcessorcsv()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"\nS.No.,File Name,Pipeline,Processor,Type,Method,Comment\r";
+            int intsno = 0;
+
+            foreach (var nodeInfo in nodeInfoList)
+            {
+                if (nodeInfo.LeafInfoList.Any())
+                {
+                    foreach (var leaf in nodeInfo.LeafInfoList)
+                    {
+                        intsno++;
+                        concatenatedLines += $"\n{intsno},{nodeInfo.FileName},{nodeInfo.Name},{leaf.Name},{leaf.Type},{leaf.Method},{leaf.Comment}";
+                    }
+                }
+                else
+                {
+                    intsno++;
+                    concatenatedLines += $"\n{intsno},{nodeInfo.FileName},{nodeInfo.Name},,,";
+                }
+            }
+
+            File.WriteAllText($"./SitecoreProcessorlist.csv", concatenatedLines);
+        }
+
+        private static void SaveEventHandlerListHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Event Handler list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Event Name</th><th>Handler Type</th><th>Method</th><th>Comment</th></tr>\r";
+
+            int sno = 0;
+            foreach (var nodeInfo in nodeInfoList)
+            {
+                if (nodeInfo.LeafInfoList.Any())
+                {
+                    foreach (var leaf in nodeInfo.LeafInfoList)
+                    {
+                        sno++;                        
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td>{leaf.Type}</td><td>{leaf.Method}</td><td>{leaf.Comment}</td></tr>";
+                    }
+                }
+                else
+                {
+                    sno++;
+                    concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td></td><td></td><td></td</tr>";
+                }
+            }
+
+            concatenatedLines += htmlCloseTag;
+            File.WriteAllText($"./SitecoreEventhandlerlist.html", concatenatedLines);
+        }
+
+        private static void SaveSettingsListHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Settings list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Setting</th><th>Value</th><th>Comment</th></tr>\r";
+
+            int sno = 0;
+            foreach (var nodeInfo in nodeInfoList)
+            {
+                if (nodeInfo.LeafInfoList.Any())
+                {
+                    foreach (var leaf in nodeInfo.LeafInfoList)
+                    {
+                        sno++;
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Value}</td><td>{leaf.Comment}</td></tr>";
+                    }
+                }
+            }
+
+            concatenatedLines += htmlCloseTag;
+            File.WriteAllText($"./SitecoreSettingslist.html", concatenatedLines);
+        }
+
+        private static void SaveCommandListHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Settings list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Command</th><th>Type</th><th>Comment</th></tr>\r";
+
+            int sno = 0;
+            foreach (var nodeInfo in nodeInfoList)
+            {
+                if (nodeInfo.LeafInfoList.Any())
+                {
+                    foreach (var leaf in nodeInfo.LeafInfoList)
+                    {
+                        sno++;
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Type}</td><td>{leaf.Comment}</td></tr>";
+                    }
+                }
+            }
+
+            concatenatedLines += htmlCloseTag;
+            File.WriteAllText($"./SitecoreCommandlist.html", concatenatedLines);
+        }
+
+        private static void SavePipelineHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Pipeline list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>Pipeline</th><th>File Name</th><th>Comment</th></tr>\r";
+
+            int sno = 1;
+            foreach (var nodeInfo in nodeInfoList)
+            {
+                
+                concatenatedLines += $"\n<tr><td>{sno}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Comment}</td></tr>";
+                sno++;
+
+            }
+
+            concatenatedLines +=htmlCloseTag;
+            File.WriteAllText($"./SitecorePipelinelist.html", concatenatedLines);
+        }
+
+        private static void SavePipelinecsv()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"\nS.No.,File Name,Pipeline,Comment\r";
+
+            int sno = 1;
+            foreach (var nodeInfo in nodeInfoList)
+            {
+
+                concatenatedLines += $"\n{sno},{nodeInfo.FileName},{nodeInfo.Name},{nodeInfo.Comment}";
+                sno++;
+
+            }
+            File.WriteAllText($"./SitecorePipelinelist.csv", concatenatedLines);
         }
 
         private static void GetStartandEndLineIndex(string searchString)
