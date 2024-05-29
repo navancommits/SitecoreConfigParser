@@ -770,7 +770,7 @@ namespace ConfigFileExtractor
             string concatenatedLines = string.Empty;
 
             concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Pipeline Processor list</p>\r";
-            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Pipeline</th><th>Processor</th><th>Type</th><th>Method</th><th>Comment</th></tr>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>Pipeline</th><th>Processor</th><th>Type</th><th>Method</th></tr>\r";
             int intsno = 0;
 
             foreach (var nodeInfo in nodeInfoList)
@@ -780,13 +780,13 @@ namespace ConfigFileExtractor
                     foreach (var leaf in nodeInfo.LeafInfoList)
                     {
                         intsno++;
-                        concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td>{leaf.Name}</td><td>{leaf.Type}</td><td>{leaf.Method}</td><td>{leaf.Comment}</td></tr>";
+                        concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.Name}</td><td>{leaf.Name}</td><td>{leaf.Type}</td><td>{leaf.Method}</td></tr>";
                     }
                 }
                 else
                 {
                     intsno++;
-                    concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td></td><td></td><td></td><td></td></tr>";
+                    concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.Name}</td><td></td><td></td><td></td></tr>";
                 }
             }
 
@@ -855,7 +855,7 @@ namespace ConfigFileExtractor
             string concatenatedLines = string.Empty;
 
             concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Settings list</p>\r";
-            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Setting</th><th>Value</th><th>Comment</th></tr>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>Comment</th><th>Setting</th><th>Value</th></tr>\r";
 
             int sno = 0;
             foreach (var nodeInfo in nodeInfoList)
@@ -865,7 +865,7 @@ namespace ConfigFileExtractor
                     foreach (var leaf in nodeInfo.LeafInfoList)
                     {
                         sno++;
-                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Value}</td><td>{leaf.Comment}</td></tr>";
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{leaf.Comment}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Value}</td></tr>";
                     }
                 }
             }
