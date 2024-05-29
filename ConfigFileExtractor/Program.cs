@@ -24,6 +24,7 @@ namespace ConfigFileExtractor
         private static string nodeTagString;
         private static string searchTagStringList;
         private static string[] searchStringArray;
+        private static int lastTagOccurence;
 
         static void Main(string[] args)
         {
@@ -66,6 +67,9 @@ namespace ConfigFileExtractor
                 searchTagStringList += ",";
                 searchStringArray = searchTagStringList.Split(',');
             }
+
+            Console.WriteLine("Pick first (0) or last (1) occurence of end tag?: ");
+            lastTagOccurence = Convert.ToInt16(Console.ReadLine());
 
             if (parseType == 2)//since leaf falls in one-level depth and node could be fixed and easier to track such fixed nodes if user-entered
             {
@@ -702,9 +706,21 @@ namespace ConfigFileExtractor
                     lineRange.TagString = searchString;
                 }
 
-                if (line.ToLowerInvariant().Trim().EndsWith(closingTag))//better bet since comment lines could have the tag
+                if (lastTagOccurence == 1)
                 {
-                    if (intLineTrackerIndex > lineRange.StartLineIndex && intLineTrackerIndex > lineRange.EndLineIndex) lineRange.EndLineIndex = intLineTrackerIndex;
+                    //tags like pipelines are nested within group tag but all of it is part of one main <pipeline> block
+                    if (line.ToLowerInvariant().Trim().EndsWith(closingTag))//better bet since comment lines could have the tag
+                    {
+                        if (intLineTrackerIndex > lineRange.StartLineIndex && intLineTrackerIndex > lineRange.EndLineIndex) lineRange.EndLineIndex = intLineTrackerIndex;
+                    }
+                }
+                else
+                {
+                    //tags like </events> could be nested within processor so, in such cases, better pick the first one
+                    if (line.ToLowerInvariant().Trim().EndsWith(closingTag))//better bet since comment lines could have the tag
+                    {
+                        if (intLineTrackerIndex > lineRange.StartLineIndex && lineRange.EndLineIndex ==0) lineRange.EndLineIndex = intLineTrackerIndex;
+                    }
                 }
 
                 intLineTrackerIndex += 1;
