@@ -39,7 +39,7 @@ namespace ConfigFileParser
         {
             InitializeComponent();
             //flag = "pipeline";
-            flag = "pipeline";
+            flag = "pipelineandprocessor";
         }
 
         private string ExtractString(string originalString, string firstString, string nextString)
