@@ -30,6 +30,7 @@ namespace ConfigFileExtractor
         private static int inputOption = 0;
         private static string htmlOpenTag = "<html><table>";
         private static string htmlCloseTag = "</table></html>";
+        private static bool isLeaflevel = false;
 
         static void Main(string[] args)
         {
@@ -61,8 +62,9 @@ namespace ConfigFileExtractor
             Console.WriteLine("1. Pipeline List\r");
             Console.WriteLine("2. Pipeline Processor List\r");
             Console.WriteLine("3. Event List\r");
-            Console.WriteLine("4. Settings List\r");
-            Console.WriteLine("5. Command List\r");
+            Console.WriteLine("4. Event handler List\r");
+            Console.WriteLine("5. Settings List\r");
+            Console.WriteLine("6. Command List\r");
             Console.ForegroundColor = ConsoleColor.White;
             inputOption = Convert.ToInt16(Console.ReadLine());
 
@@ -85,22 +87,31 @@ namespace ConfigFileExtractor
                     parseType = 2;
                     searchTagStringList = "pipelines,processors";
                     lastTagOccurence = 1;
+                    isLeaflevel = true;
                     leafTagString = "processor";
                     break;
                 case 3:
                     parseType = 2;
                     searchTagStringList = "events";
-                    lastTagOccurence = 1;
+                    lastTagOccurence = 0;
                     nodeTagString = "event";
                     leafTagString = "handler";
                     break;
                 case 4:
+                    parseType = 2;
+                    searchTagStringList = "events";
+                    lastTagOccurence = 0;
+                    nodeTagString = "event";
+                    leafTagString = "handler";
+                    isLeaflevel = true;
+                    break;
+                case 5:
                     parseType = 1;
                     searchTagStringList = "settings";
                     lastTagOccurence = 0;
                     leafTagString = "setting";
                     break;
-                case 5:
+                case 6:
                     parseType = 1;
                     searchTagStringList = "commands";
                     lastTagOccurence = 0;
@@ -275,7 +286,7 @@ namespace ConfigFileExtractor
                 var currentLine = lstConfig[intLineNumTracker];
                 var openTagLine = lstConfig[intLineNumTracker - 1];
                 //filter some of the keywords here since they are not valid tags to retrieve
-                if (currentLine.Trim().StartsWith("<add ")) continue;
+                if (currentLine.Trim().StartsWith("<add ") || currentLine.Trim().StartsWith("<request ")) continue;
 
                 leafTagCommented = LeafLineCommented(currentLine);
 
@@ -298,7 +309,7 @@ namespace ConfigFileExtractor
                 
                 //nodes falling in level 1 or 2
                 //there could be scenarios when node is opened and closed without any leaves within like, <nodetag /> and this must be handled too
-                if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}"))//node lines enter this block
+                if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}") && !isLeaflevel)//node lines enter this block
                 {
                     string tmpCurrentLine;
                     if (currentLine.Trim().Contains(' ')) tmpCurrentLine = currentLine.Trim().Split(' ')[0]; else tmpCurrentLine = currentLine.Trim();
@@ -346,7 +357,7 @@ namespace ConfigFileExtractor
                     }
                 }
 
-                if (currentLine.Trim().Contains($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
+                if (currentLine.Trim().StartsWith($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
                 {
                     if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) leafTagCommented = true;//since close tag is just after open tag 
                                                                                                                         //first leaf tag enters here and gets the node info too
@@ -521,7 +532,7 @@ namespace ConfigFileExtractor
             leafSerialNumber += 1;
   
             leafInfo.Type = type;
-            leafInfo.Method = method;
+            leafInfo.Method = RemoveSpecialCharacters(method);
             leafInfo.SerialNumber = leafSerialNumber;
 
             if (!string.IsNullOrWhiteSpace(lstConfig[intLineNumTracker - 1])) leafInfo.Comment = GetComment(lstConfig[intLineNumTracker - 1]);
@@ -687,6 +698,17 @@ namespace ConfigFileExtractor
                     switch (outputType)
                     {
                         case 1:
+                            SaveEventListHtml();
+                            break;
+                        case 2:
+                            //SaveEventListcsv();
+                            break;
+                    }
+                    break;
+                case 4:
+                    switch (outputType)
+                    {
+                        case 1:
                             SaveEventHandlerListHtml();
                             break;
                         case 2:
@@ -694,7 +716,7 @@ namespace ConfigFileExtractor
                             break;
                     }
                     break;
-                case 4:
+                case 5:
                     switch (outputType)
                     {
                         case 1:
@@ -705,7 +727,7 @@ namespace ConfigFileExtractor
                             break;
                     }
                     break;
-                case 5:
+                case 6:
                     switch (outputType)
                     {
                         case 1:
@@ -771,7 +793,7 @@ namespace ConfigFileExtractor
             string concatenatedLines = string.Empty;
 
             concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Pipeline Processor list</p>\r";
-            concatenatedLines += $"\n<tr><th>S.No.</th><th>Pipeline</th><th>Processor</th><th>Type</th><th>Method</th></tr>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Pipeline</th><th>Processor</th><th>Type</th><th>Method</th></tr>\r";
             int intsno = 0;
 
             foreach (var nodeInfo in nodeInfoList)
@@ -781,13 +803,13 @@ namespace ConfigFileExtractor
                     foreach (var leaf in nodeInfo.LeafInfoList)
                     {
                         intsno++;
-                        concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.Name}</td><td>{leaf.Name}</td><td>{leaf.Type}</td><td>{leaf.Method}</td></tr>";
+                        concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td>{leaf.Name}</td><td>{leaf.Type}</td><td>{leaf.Method}</td></tr>";
                     }
                 }
                 else
                 {
                     intsno++;
-                    concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.Name}</td><td></td><td></td><td></td></tr>";
+                    concatenatedLines += $"\n<tr><td>{intsno}</td><td>{nodeInfo.FileName}</td><td>{nodeInfo.Name}</td><td></td><td></td><td></td></tr>";
                 }
             }
 
@@ -837,7 +859,7 @@ namespace ConfigFileExtractor
                     foreach (var leaf in nodeInfo.LeafInfoList)
                     {
                         sno++;                        
-                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td>{leaf.Type}</td><td>{leaf.Method}</td><td>{leaf.Comment}</td></tr>";
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td>{leaf.Type}</td><td>{RemoveSpecialCharacters(leaf.Method)}</td><td>{leaf.Comment}</td></tr>";
                     }
                 }
                 else
@@ -849,6 +871,24 @@ namespace ConfigFileExtractor
 
             concatenatedLines += htmlCloseTag;
             File.WriteAllText($"./SitecoreEventhandlerlist.html", concatenatedLines);
+        }
+
+        private static void SaveEventListHtml()
+        {
+            string concatenatedLines = string.Empty;
+
+            concatenatedLines += $"{htmlOpenTag}\n<p align=center>Sitecore Event list</p>\r";
+            concatenatedLines += $"\n<tr><th>S.No.</th><th>File Name</th><th>Event Name</th><th>Comment</th></tr>\r";
+
+            int sno = 0;
+            foreach (var nodeInfo in nodeInfoList)
+            {                
+                sno++;
+                concatenatedLines += $"\n<tr><td>{sno}</td><td>{nodeInfo.FileName}</td><td>{RemoveSpecialCharacters(nodeInfo.Name)}</td><td>{nodeInfo.Comment}</td></tr>";
+            }
+
+            concatenatedLines += htmlCloseTag;
+            File.WriteAllText($"./SitecoreEventlist.html", concatenatedLines);
         }
 
         private static void SaveSettingsListHtml()
