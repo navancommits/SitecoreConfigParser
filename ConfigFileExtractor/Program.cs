@@ -274,6 +274,8 @@ namespace ConfigFileExtractor
             {
                 var currentLine = lstConfig[intLineNumTracker];
                 var openTagLine = lstConfig[intLineNumTracker - 1];
+                //filter some of the keywords here since they are not valid tags to retrieve
+                if (currentLine.Trim().StartsWith("<add ")) continue;
 
                 leafTagCommented = LeafLineCommented(currentLine);
 
@@ -293,113 +295,44 @@ namespace ConfigFileExtractor
 
                 string nextLine=string.Empty;
                 if (intLineNumTracker< lstConfig.Length-1) nextLine = lstConfig[intLineNumTracker + 1];
-
                 
-                    //nodes falling in level 1 or 2
-                    //there could be scenarios when node is opened and closed without any leaves within like, <nodetag /> and this must be handled too
-                    if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}"))//node lines enter this block
+                //nodes falling in level 1 or 2
+                //there could be scenarios when node is opened and closed without any leaves within like, <nodetag /> and this must be handled too
+                if (!currentLine.Trim().StartsWith("<!--") && !currentLine.Trim().StartsWith($"<{leafTagString}"))//node lines enter this block
+                {
+                    string tmpCurrentLine;
+                    if (currentLine.Trim().Contains(' ')) tmpCurrentLine = currentLine.Trim().Split(' ')[0]; else tmpCurrentLine = currentLine.Trim();
+
+                    if (!string.IsNullOrWhiteSpace(nodeTagString) && currentLine.Trim().StartsWith($"<{nodeTagString} ") || RemoveSpecialCharacters(tmpCurrentLine) == RemoveSpecialCharacters(nextLine.Trim()) || currentLine.Trim().EndsWith("/>"))
                     {
-                        string tmpCurrentLine;
-                        if (currentLine.Trim().Contains(' ')) tmpCurrentLine = currentLine.Trim().Split(' ')[0]; else tmpCurrentLine = currentLine.Trim();
+                        //1. because fixed tag nodes without children must be accounted
+                        //2. tag starts and ends in one line
+                        //3. next line is close node tag
+                        leafTagCommented = true;
 
-                        if (!string.IsNullOrWhiteSpace(nodeTagString) && currentLine.Trim().StartsWith($"<{nodeTagString} ") || RemoveSpecialCharacters(tmpCurrentLine) == RemoveSpecialCharacters(nextLine.Trim()) || currentLine.Trim().EndsWith("/>"))
+                        //now extract node comment just above node open tag
+                        if (!nodeCommentAdded)
+                            if (lstConfig[tmpprevlinenum].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum];
+
+                        //node info extraction
+                        string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
+
+                        if (currentLine.Trim().Contains(" help=")) //this line contains node help
+                            comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
+
+                        string name = string.Empty;
+                        if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
+
+                        nodeInfo = new NodeInfo
                         {
-                            //1. because fixed tag nodes without children must be accounted
-                            //2. tag starts and ends in one line
-                            //3. next line is close node tag
-                            leafTagCommented = true;
+                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                        };
 
-                            //now extract node comment just above node open tag
-                            if (!nodeCommentAdded)
-                                if (lstConfig[tmpprevlinenum].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum];
+                        if (string.IsNullOrWhiteSpace(name)) name = ExtractString(currentLine, "<", ">").Split(' ')[0];
+                        nodeInfo.Name = RemoveSpecialCharacters(name);
 
-                            //node info extraction
-                            string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
-
-                            if (currentLine.Trim().Contains(" help=")) //this line contains node help
-                                comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
-
-                            string name = string.Empty;
-                            if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
-
-                            nodeInfo = new NodeInfo
-                            {
-                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
-                            };
-
-                            if (string.IsNullOrWhiteSpace(name)) name = ExtractString(currentLine, "<", ">").Split(' ')[0];
-                            nodeInfo.Name = RemoveSpecialCharacters(name);
-
-                            nodeCommentAdded = true;
-                            //node info extraction
-
-                            var pathSplit = ExtractArraywithSplit(filePath, "\\");
-                            nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
-
-                            //leaf tags within an existing node
-                            if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
-
-                            if (currentLine.Trim().Replace("<", "</") == nextLine.Trim()) intLineNumTracker++; //this is already accounted since node close tag is just after open tag
-
-                            tagOpened = true;
-                        }
-                    }
-
-                    if (currentLine.Trim().Contains($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
-                    {
-                        if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) leafTagCommented = true;//since close tag is just after open tag 
-                                                                                                                          //first leaf tag enters here and gets the node info too
-                                                                                                                          //retrieve prev line                    
-                        if (tmpprevline.Trim().StartsWith("<!--"))
-                        {
-                            leafCommentLine = lstConfig[tmpprevlinenum];
-                            previousLine = lstConfig[tmpprevlinenum - 1];
-                        }
-
-                        //now extract node comment 
-                        if (parseType == 2) //applicable only for more than one level nesting
-                        {
-                            if (!nodeCommentAdded)
-                            {
-                                if (string.IsNullOrWhiteSpace(leafCommentLine))
-                                {
-                                    if (lstConfig[tmpprevlinenum - 1].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 1];
-                                }
-                                else
-                                {
-                                    if (lstConfig[tmpprevlinenum - 2].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 2];
-                                }
-                            }
-
-                            //now check if prev line isn't anything else 
-                            if (!previousLine.Trim().StartsWith($"<{leafTagString}") && !previousLine.Trim().StartsWith($"</{leafTagString}"))
-                            {
-                                //node info extraction
-                                string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
-
-                                if (previousLine.Trim().Contains(" help=")) //this line contains node help
-                                    comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
-
-                                string name = string.Empty;
-                                if (previousLine.Contains(" name=")) name = ExtractArraywithSplit(previousLine, " name=")[1];
-
-                                nodeInfo = new NodeInfo
-                                {
-                                    Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
-                                };
-
-                                if (string.IsNullOrWhiteSpace(name)) name = ExtractString(previousLine, "<", ">").Split(' ')[0];
-                                nodeInfo.Name = name;
-
-                                nodeCommentAdded = true;
-                                //node info extraction
-
-                            }
-                        }
-                        else
-                        {
-                            nodeInfo = new NodeInfo();
-                        }
+                        nodeCommentAdded = true;
+                        //node info extraction
 
                         var pathSplit = ExtractArraywithSplit(filePath, "\\");
                         nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
@@ -407,18 +340,86 @@ namespace ConfigFileExtractor
                         //leaf tags within an existing node
                         if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
 
+                        if (currentLine.Trim().Replace("<", "</") == nextLine.Trim()) intLineNumTracker++; //this is already accounted since node close tag is just after open tag
+
                         tagOpened = true;
+                    }
+                }
 
-                        if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) AddtoListandReset(intLineNumTracker, nodeInfo, filePath);//since leaf close tag is just after open tag
+                if (currentLine.Trim().Contains($"<{leafTagString} ") || openTagLine.Trim().StartsWith(currentLine.Trim().Replace("/>", "<")))//leaf lines enter this block
+                {
+                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) leafTagCommented = true;//since close tag is just after open tag 
+                                                                                                                        //first leaf tag enters here and gets the node info too
+                                                                                                                        //retrieve prev line                    
+                    if (tmpprevline.Trim().StartsWith("<!--"))
+                    {
+                        leafCommentLine = lstConfig[tmpprevlinenum];
+                        previousLine = lstConfig[tmpprevlinenum - 1];
+                    }
 
+                    //now extract node comment 
+                    if (parseType == 2) //applicable only for more than one level nesting
+                    {
+                        if (!nodeCommentAdded)
+                        {
+                            if (string.IsNullOrWhiteSpace(leafCommentLine))
+                            {
+                                if (lstConfig[tmpprevlinenum - 1].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 1];
+                            }
+                            else
+                            {
+                                if (lstConfig[tmpprevlinenum - 2].Trim().StartsWith("<!--")) nodecommentline = lstConfig[tmpprevlinenum - 2];
+                            }
+                        }
+
+                        //now check if prev line isn't anything else 
+                        if (!previousLine.Trim().StartsWith($"<{leafTagString}") && !previousLine.Trim().StartsWith($"</{leafTagString}"))
+                        {
+                            //node info extraction
+                            string comment = nodecommentline.Replace("<!--", string.Empty).Replace("-->", string.Empty);
+
+                            if (previousLine.Trim().Contains(" help=")) //this line contains node help
+                                comment += " " + ExtractArraywithSplit(previousLine.Trim(), " help=")[1];
+
+                            string name = string.Empty;
+                            if (previousLine.Contains(" name=")) name = ExtractArraywithSplit(previousLine, " name=")[1];
+
+                            nodeInfo = new NodeInfo
+                            {
+                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                            };
+
+                            if (string.IsNullOrWhiteSpace(name)) name = ExtractString(previousLine, "<", ">").Split(' ')[0];
+                            nodeInfo.Name = name;
+
+                            nodeCommentAdded = true;
+                            //node info extraction
+
+                        }
                     }
                     else
                     {
-                        //all other lines enter this flow
-                        AddtoListandReset(intLineNumTracker, nodeInfo, filePath);
+                        nodeInfo = new NodeInfo();
                     }
 
-                    leafTagCommented = false;
+                    var pathSplit = ExtractArraywithSplit(filePath, "\\");
+                    nodeInfo.FileName = pathSplit[pathSplit.Length - 1];
+
+                    //leaf tags within an existing node
+                    if (!leafTagCommented) ParseLeafLinesbetweenLeafTags(currentLine);
+
+                    tagOpened = true;
+
+                    if (openTagLine.Trim().StartsWith(currentLine.Trim().Replace("</", "<"))) AddtoListandReset(intLineNumTracker, nodeInfo, filePath);//since leaf close tag is just after open tag
+
+                }
+                else
+                {
+                    //all other lines enter this flow
+                    AddtoListandReset(intLineNumTracker, nodeInfo, filePath);
+                }
+
+                leafTagCommented = false;
             }
             AddtoListandReset(intLineNumTracker - 1, nodeInfo, filePath);
         }
