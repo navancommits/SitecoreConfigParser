@@ -288,6 +288,9 @@ namespace ConfigFileExtractor
                 //filter some of the keywords here since they are not valid tags to retrieve
                 if (currentLine.Trim().StartsWith("<add ") || currentLine.Trim().StartsWith("<request ")) continue;
 
+                //logic specific to event
+                if (parseType == 3 || parseType == 4) if (currentLine.Trim().StartsWith("<processor ")) continue; //since event doesn't need to parse this - Sitecore.ExperienceProfile.Reporting.config
+
                 leafTagCommented = LeafLineCommented(currentLine);
 
                 int tmpprevlinenum = intLineNumTracker - 1;
@@ -332,7 +335,15 @@ namespace ConfigFileExtractor
                             comment += " " + ExtractArraywithSplit(currentLine.Trim(), " help=")[1];
 
                         string name = string.Empty;
+
                         if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
+
+                        //logic specific to event                       
+                        if (currentLine.Trim().StartsWith("<event "))
+                        {
+                            if (nextLine.Trim().Contains("attributeName>")) name = ExtractString(nextLine, ">", "</");
+                        }
+                        //logic specific to event
 
                         nodeInfo = new NodeInfo
                         {
