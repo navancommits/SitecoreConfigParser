@@ -1,8 +1,11 @@
 ﻿using ServiceStack.Text;
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.IO;
 using System.Linq;
+using System.Text.RegularExpressions;
+using static System.Net.Mime.MediaTypeNames;
 
 namespace ConfigFileExtractor
 {
@@ -52,8 +55,9 @@ namespace ConfigFileExtractor
             //child tag attributes to retrieve - type, method, resolve
 
             //
+            Console.Title = "Sitecore Config File Parser";
             Console.ForegroundColor = ConsoleColor.Yellow;
-            Console.WriteLine("Enter the file path to search: ");
+            Console.WriteLine("Enter the folder path to search: ");
             Console.ForegroundColor = ConsoleColor.White;
             parsePath = Console.ReadLine();
 
@@ -78,6 +82,7 @@ namespace ConfigFileExtractor
             switch (inputOption)
             {
                 case 1:
+                    //node extraction
                     parseType = 2;
                     searchTagStringList = "pipelines,processors";
                     lastTagOccurence = 1;
@@ -91,6 +96,7 @@ namespace ConfigFileExtractor
                     leafTagString = "processor";
                     break;
                 case 3:
+                    //node extraction
                     parseType = 2;
                     searchTagStringList = "events";
                     lastTagOccurence = 0;
@@ -98,6 +104,7 @@ namespace ConfigFileExtractor
                     leafTagString = "handler";
                     break;
                 case 4:
+                    //leaf extraction
                     parseType = 2;
                     searchTagStringList = "events";
                     lastTagOccurence = 0;
@@ -289,7 +296,7 @@ namespace ConfigFileExtractor
                 if (currentLine.Trim().StartsWith("<add ") || currentLine.Trim().StartsWith("<request ")) continue;
 
                 //logic specific to event
-                if (parseType == 3 || parseType == 4) if (currentLine.Trim().StartsWith("<processor ")) continue; //since event doesn't need to parse this - Sitecore.ExperienceProfile.Reporting.config
+                if (inputOption == 3 || inputOption == 4) if (currentLine.Trim().StartsWith("<processor ")) continue; //since event doesn't need to parse this - like, Sitecore.ExperienceProfile.Reporting.config
 
                 leafTagCommented = LeafLineCommented(currentLine);
 
@@ -337,6 +344,7 @@ namespace ConfigFileExtractor
                         string name = string.Empty;
 
                         if (currentLine.Contains(" name=")) name = ExtractArraywithSplit(currentLine, " name=")[1];
+                        if (name.Contains(" help=")) name = ExtractArraywithSplit(name, " help=")[0];
 
                         //logic specific to event                       
                         if (currentLine.Trim().StartsWith("<event "))
@@ -347,7 +355,7 @@ namespace ConfigFileExtractor
 
                         nodeInfo = new NodeInfo
                         {
-                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                            Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim().Trim()
                         };
 
                         if (string.IsNullOrWhiteSpace(name)) name = ExtractString(currentLine, "<", ">").Split(' ')[0];
@@ -408,7 +416,7 @@ namespace ConfigFileExtractor
 
                             nodeInfo = new NodeInfo
                             {
-                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim()
+                                Comment = comment.Replace("<!--", string.Empty).Replace("-->", string.Empty).Replace(">", string.Empty).Replace("\"", string.Empty).Trim().Trim()
                             };
 
                             if (string.IsNullOrWhiteSpace(name)) name = ExtractString(previousLine, "<", ">").Split(' ')[0];
@@ -504,7 +512,9 @@ namespace ConfigFileExtractor
 
         private static List<LeafInfo> AddLeafInfofromLine(LeafInfo leafInfo, string actualLine, string previousline = "")
         {
-            string[] leaflineAttributes = actualLine.Trim().Split(' ');
+            string[] leaflineAttributes= { };
+            if (!actualLine.Contains("value=")) leaflineAttributes = actualLine.Trim().Split(' ');//since value could have assembly details separated by space
+
             string type = string.Empty;
             string method = string.Empty;
 
@@ -531,13 +541,59 @@ namespace ConfigFileExtractor
                 type = RemoveSpecialCharacters(type);
             }
 
-
             foreach (string str in leaflineAttributes)
             {
                 if (str.ToLowerInvariant().Contains("name=")) leafInfo.Name = ExtractArraywithSplit(str, "name=")[1];
-                if (str.ToLowerInvariant().Contains("value=")) leafInfo.Value = ExtractArraywithSplit(str, "value=")[1];
+                //if (str.ToLowerInvariant().Contains("value=")) leafInfo.Value = ExtractArraywithSplit(str, "value=")[1].Replace("/>",string.Empty);
 
                 if (str.ToLowerInvariant().Contains("method=")) method = ExtractArraywithSplit(str, "method=")[1];
+            }
+
+
+            string valueextract = string.Empty;
+            string nameextract = string.Empty;
+
+            if (inputOption == 5) //for settings
+            {
+                leafInfo.Name = RemoveSpecialCharacters(ExtractArraywithSplit(ExtractArraywithSplit(actualLine, " value=")[0], " name=")[1].Split(' ')[0]);
+
+                if (actualLine.Contains("value="))
+                    //extraction logic is different for such lines   
+                    valueextract = ExtractArraywithSplit(actualLine, " value=")[1];
+
+                if (actualLine.Contains(" role:require"))
+                {
+                    //leafInfo.Name = RemoveSpecialCharacters(ExtractArraywithSplit(ExtractArraywithSplit(actualLine, " value=")[0], " name=")[1]);
+
+                    if (actualLine.Contains("value"))
+                    {
+                        valueextract = ExtractString(actualLine, "value=", " role:require=");
+                    }
+                    else
+                    {
+                        if (lstConfig[intLineNumTracker + 1].Contains("value")) valueextract = ExtractString(lstConfig[intLineNumTracker + 1], ">", "</");
+                        intLineNumTracker++;
+                    }
+
+                    leafInfo.Comment += "role:require=" + ExtractArraywithSplit(actualLine, " role:require=")[1].Replace("/",string.Empty).Replace(">", string.Empty);
+                }
+
+                if (actualLine.Contains(" security:require"))
+                {
+                    if (actualLine.Contains("value"))
+                    {
+                        valueextract = ExtractString(actualLine, "value=", " security:require=");
+                    }
+                    else
+                    {
+                        if (lstConfig[intLineNumTracker + 1].Contains("value")) valueextract = ExtractString(lstConfig[intLineNumTracker + 1], ">", "</");
+                        intLineNumTracker++;
+                    }
+
+                    leafInfo.Comment += "security:require=" + ExtractArraywithSplit(actualLine, " security:require=")[1].Replace("/", string.Empty).Replace(">", string.Empty);
+                }
+
+                leafInfo.Value = valueextract.Replace("/>", string.Empty).Trim();
             }
 
             leafSerialNumber += 1;
@@ -546,7 +602,8 @@ namespace ConfigFileExtractor
             leafInfo.Method = RemoveSpecialCharacters(method);
             leafInfo.SerialNumber = leafSerialNumber;
 
-            if (!string.IsNullOrWhiteSpace(lstConfig[intLineNumTracker - 1])) leafInfo.Comment = GetComment(lstConfig[intLineNumTracker - 1]);
+            if (!string.IsNullOrWhiteSpace(lstConfig[intLineNumTracker - 1])) leafInfo.Comment 
+                    += GetComment(lstConfig[intLineNumTracker - 1]);
 
             leafInfoList.Add(leafInfo);
 
@@ -917,7 +974,7 @@ namespace ConfigFileExtractor
                     foreach (var leaf in nodeInfo.LeafInfoList)
                     {
                         sno++;
-                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{leaf.Comment}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Value}</td></tr>";
+                        concatenatedLines += $"\n<tr><td>{sno}</td><td>{leaf.Comment.Trim()}</td><td>{RemoveSpecialCharacters(leaf.Name)}</td><td>{leaf.Value}</td></tr>";
                     }
                 }
             }
